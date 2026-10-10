@@ -1,0 +1,16 @@
+{
+	"name": "stepcode-zh",
+	"version": "2.0.0",
+	"description": "StepCode (step) 终端界面中文汉化：翻译表 + 一键构建脚本",
+	"type": "module",
+	"license": "MIT",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"selftest": "node scripts/selftest.js",
+		"build": "bash build.sh",
+		"audit": "node scripts/audit.js"
+	},
+	"private": true
+}

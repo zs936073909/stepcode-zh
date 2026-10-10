@@ -1,0 +1,20 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Builds a synthetic bundle and runs the real patch/audit scripts against it, so
+      # CI needs no StepCode install. Covers the coverage regression, the value
+      # validation, the padding edge cases, and the audit gate.
+      - name: Self-test the patch pipeline
+        run: node scripts/selftest.js

@@ -1,0 +1,12 @@
+{
+	"Cancel": "Both sides are replaced together: the select() option array and the `choice === \"Cancel\"` check use the same literal, so they stay consistent.",
+	"Continue": "Same shape as Cancel: the option array and the `choice !== \"Continue\"` check are replaced together.",
+	"Unload all and load": "Same shape: the option array and the `replace = choice === ...` check are replaced together.",
+	"Already installed": "Same shape: the option array and the `selected === \"Already installed\"` check are replaced together.",
+	"Yes": "Same shape: `select(..., [\"Yes\",\"No\"]) === \"Yes\"` — array and comparison are replaced together.",
+	"Compaction cancelled": "Thrown and caught with the same literal in the same module, so both sides are replaced together.",
+	"Image reading is disabled.": "Emitted and filtered with the same literal in the same expression, so both sides are replaced together.",
+	"authHeader requires a resolved API key": "Thrown and compared with the same literal in the same module, so both sides are replaced together.",
+	"Using custom model id": "The warning template and the `warning?.includes(...)` check both contain the literal, so both are replaced together.",
+	"Workflow started": "Set as progress.message and compared against the same literal, so both sides are replaced together."
+}
