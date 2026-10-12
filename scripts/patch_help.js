@@ -13,6 +13,7 @@
 // injection through a translation table impossible, not merely unlikely.
 import fs from "node:fs";
 import path from "node:path";
+import { loadKeymap, recordKey, saveKeymap } from "./keymap.js";
 import { enclosingKind, padTo, repad, ROOT, scanLiterals, validateValue } from "./lib.js";
 
 const args = process.argv.slice(2);
@@ -24,6 +25,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 let buf = fs.readFileSync(inFile);
+const src = buf.toString("utf8");
 // The original byte length comes from pass 1's state file, not from the intermediate,
 // because the intermediate is deliberately left unpadded.
 const statePath = path.join(path.dirname(inFile), ".state.json");
@@ -34,16 +36,17 @@ if (!fs.existsSync(statePath)) {
 const origLen = JSON.parse(fs.readFileSync(statePath, "utf8")).origLen;
 const map = JSON.parse(fs.readFileSync(path.join(ROOT, "i18n", "zh_help.json"), "utf8"));
 
-const beforeInterp = (buf.toString("utf8").match(/\$\{/g) ?? []).length;
-const beforeTicks = (buf.toString("utf8").match(/`/g) ?? []).length;
+const beforeInterp = (src.match(/\$\{/g) ?? []).length;
+const beforeTicks = (src.match(/`/g) ?? []).length;
 
 // Longest key first so a longer phrase wins over its own prefix.
-const spans = scanLiterals(buf.toString("utf8"));
+const spans = scanLiterals(src);
 const isWord = (c) => c !== undefined && /[A-Za-z0-9_$]/.test(String.fromCharCode(c));
 
 const report = [];
 const missing = [];
 const rejected = [];
+const keymap = loadKeymap();
 for (const [en, zh] of Object.entries(map).sort((a, b) => b[0].length - a[0].length)) {
 	const needle = Buffer.from(en, "utf8");
 	const positions = [];
@@ -79,7 +82,11 @@ for (const [en, zh] of Object.entries(map).sort((a, b) => b[0].length - a[0].len
 
 	const out = [];
 	let p = 0;
-	for (const idx of positions) { out.push(buf.slice(p, idx), Buffer.from(zh, "utf8")); p = idx + needle.length; }
+	for (const idx of positions) {
+		out.push(buf.slice(p, idx), Buffer.from(zh, "utf8"));
+		recordKey(keymap, en, src, idx, idx + needle.length, 2);
+		p = idx + needle.length;
+	}
 	out.push(buf.slice(p));
 	buf = Buffer.concat(out);
 	report.push({ en, zh, count: positions.length, kinds: [...kinds] });
@@ -90,8 +97,8 @@ for (const [en, kinds, errs] of rejected) console.error(`  REJECTED [${kinds.joi
 for (const m of missing) console.log(`  missing: ${JSON.stringify(m)}`);
 
 // ---- injection invariants ----------------------------------------------------------
-const afterInterp = (buf.toString("utf8").match(/\$\{/g) ?? []).length;
-const afterTicks = (buf.toString("utf8").match(/`/g) ?? []).length;
+const afterInterp = (src.match(/\$\{/g) ?? []).length;
+const afterTicks = (src.match(/`/g) ?? []).length;
 if (afterInterp !== beforeInterp || afterTicks !== beforeTicks) {
 	console.error(`interpolation/backtick invariant violated: \${ went ${beforeInterp} -> ${afterInterp}, backticks ${beforeTicks} -> ${afterTicks}`);
 	console.error("a translation value must not introduce new template-literal syntax");
@@ -107,5 +114,6 @@ if (buf.length !== origLen) throw new Error(`length mismatch ${buf.length} != ${
 
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, buf);
+saveKeymap(keymap);
 fs.writeFileSync(path.join(ROOT, "build", "help_report.json"), `${JSON.stringify({ report, missing, rejected }, null, 1)}\n`);
 console.log(`written: ${outFile}  (${buf.length} bytes)`);

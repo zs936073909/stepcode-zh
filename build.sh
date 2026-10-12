@@ -15,12 +15,23 @@ cd "$(dirname "$0")"
 
 BIN="${1:-${STEPCODE_BIN:-$HOME/.stepcode/bin/step}}"
 echo "==> using binary: $BIN"
+# Snapshot the previous manifest before extract.js overwrites it: doctor.js needs the old
+# one to tell "upstream changed something" from "nothing changed".
+if [[ -f build/manifest.json ]]; then
+	cp build/manifest.json build/manifest.prev.json
+fi
 node scripts/extract.js "$BIN"
 
 PATCH_ARGS=()
 [[ "${LENIENT:-0}" == "1" ]] && PATCH_ARGS+=(--lenient)
 
-node scripts/patch.js "${PATCH_ARGS[@]}"
+if ! node scripts/patch.js "${PATCH_ARGS[@]}"; then
+	echo "==> 有翻译键失效，跑 doctor 定位上游改动"
+	node scripts/doctor.js "$BIN" || true
+	echo
+	echo "把 i18n/zh_migrate.json 里空的译文填上，或按需改翻译表，然后重跑 ./build.sh"
+	exit 1
+fi
 node scripts/patch_help.js
 
 echo "==> safety audit"

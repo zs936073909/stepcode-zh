@@ -11,6 +11,7 @@
 // stays valid; the difference is absorbed by trailing whitespace at EOF.
 import fs from "node:fs";
 import path from "node:path";
+import { recordKey, saveKeymap } from "./keymap.js";
 import { ROOT, validateValue } from "./lib.js";
 
 const args = process.argv.slice(2);
@@ -25,6 +26,9 @@ for (let i = 0; i < args.length; i++) {
 
 let buf = fs.readFileSync(inFile);
 const origLen = buf.length;
+// Decoded once: the per-key loop below slices it for context fingerprints, and re-decoding
+// an 11 MB buffer a thousand times is both slow and a good way to exhaust the heap.
+const src = buf.toString("utf8");
 
 // ---- load tables ------------------------------------------------------------------
 const map = new Map();
@@ -34,6 +38,19 @@ for (const f of fs.readdirSync(i18nDir).filter((f) => /^zh_\d+\.json$/.test(f)).
 		if (map.has(k) && map.get(k) !== v) throw new Error(`conflicting translation for ${JSON.stringify(k)}`);
 		map.set(k, v);
 	}
+}
+// zh_migrate.json is staged by scripts/doctor.js after an upstream update; its values may
+// still be empty, and an empty value means "not translated yet", so it is skipped.
+const migratePath = path.join(i18nDir, "zh_migrate.json");
+if (fs.existsSync(migratePath)) {
+	let staged = 0;
+	for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(migratePath, "utf8")))) {
+		if (typeof v !== "string" || v.length === 0) continue;
+		if (map.has(k) && map.get(k) !== v) throw new Error(`conflicting translation for ${JSON.stringify(k)}`);
+		map.set(k, v);
+		staged++;
+	}
+	if (staged > 0) console.log(`migrated keys applied: ${staged}`);
 }
 console.log(`translations loaded: ${map.size}`);
 
@@ -76,6 +93,7 @@ function jsEscapeAscii(s, quote) {
 let applied = 0;
 const missing = [];
 const rejected = [];
+const keymap = new Map();
 for (const [en, zh] of map) {
 	// Values are re-escaped here, so this pass is safe by construction; validate anyway so
 	// a bad table is reported once instead of surfacing as a broken bundle.
@@ -99,7 +117,12 @@ for (const [en, zh] of map) {
 		const repl = Buffer.from(`${quote}${jsEscape(zh, quote)}${quote}`, "utf8");
 		const out = [];
 		let p = 0;
-		for (const pos of positions) { out.push(buf.slice(p, pos), repl); p = pos + needle.length; }
+		for (const pos of positions) {
+			out.push(buf.slice(p, pos), repl);
+			// The needle includes the quotes; fingerprint the text between them.
+			recordKey(keymap, en, src, pos + 1, pos + needle.length - 1, 1);
+			p = pos + needle.length;
+		}
 		out.push(buf.slice(p));
 		buf = Buffer.concat(out);
 		replacedThisKey += positions.length;
@@ -134,5 +157,6 @@ if (delta < 0) {
 }
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, buf);
+saveKeymap(keymap);
 fs.writeFileSync(path.join(path.dirname(outFile), ".state.json"), `${JSON.stringify({ origLen }, null, 1)}\n`);
 console.log(`written: ${outFile}  (${buf.length} bytes, ${delta} shorter than the original)`);
